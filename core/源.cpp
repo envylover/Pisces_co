@@ -41,7 +41,7 @@ public:
 			return i;
 		}
 		bool operator==(std::default_sentinel_t) const {
-			return !pG->operator bool() ||pG->done();
+			return !(*pG) || pG->done();
 		}
 
 		explicit Iter(Generate* p) :
@@ -67,11 +67,27 @@ Generate range(int first, int last)
 }
 
 
+task<int> getValue(int beg,int end)
+{
+	while (beg < end)
+		co_yield beg++;
+}
+
+
 #include <algorithm>
 int main() {
 	
 	for (auto i : range(1, 10))
 		cout << i << " ";
 	cout << endl;
+
+	auto a = getValue(1,15);
+	a.resume();
+	while (a && !a.done())
+	{
+		cout << a.get() << " ";
+		a.resume();
+	}
+	a.destory();
 	return 0;
 }

@@ -10,7 +10,10 @@
 namespace pisces
 {
 	using namespace std;
+
 	struct emptyDerived {};
+
+
 	template<
 	    typename RTY,
 		typename Derived = emptyDerived,
@@ -23,7 +26,9 @@ namespace pisces
 	public:
 		struct promise_type;
 		explicit task(std::coroutine_handle<promise_type> h):_handler(h) {
-			pDeri = static_cast<Derived*>(this);
+			if constexpr (same_as<Derived, emptyDerived>);
+			else
+				pDeri = static_cast<Derived*>(this);
 		}
 		task() {}
 	    //----------------------------------------------------
@@ -35,7 +40,11 @@ namespace pisces
 		{
 			using co_handle = std::coroutine_handle<promise_type>;
 			auto get_return_object() {
-				return Derived{co_handle::from_promise(*this)};}
+				if constexpr (same_as<Derived, emptyDerived>)
+					return task{ co_handle::from_promise(*this) };
+				else
+					return Derived{ co_handle::from_promise(*this) };
+			}
 			auto initial_suspend() { 
 
 				if constexpr(default_initialize<Derived>)
@@ -105,15 +114,10 @@ namespace pisces
 	template<>
 	class task<void>
 	{
-		template<typename FUNC, typename ...Arg>
-		task(FUNC func, Arg&& ...x) requires std::invocable<FUNC, Arg&&...>
-		{
-			_func = std::bind(func, std::forward<Arg>(x)...);
-		}
+		
+	public:
 		task() {}
 		//----------------------------------------------------
-
-	public:
 		struct promise_type
 		{
 			auto get_return_object() { return task{}; }
@@ -127,10 +131,6 @@ namespace pisces
 				throw;
 			}
 		};
-
-
-		function<void(void)>                _func;
-		std::coroutine_handle<promise_type> _handler;
 	};
 	
 
