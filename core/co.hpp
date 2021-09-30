@@ -12,9 +12,9 @@ namespace pisces
 	using namespace std;
 	struct emptyDerived {};
 	template<
-	typename RTY,
-	typename Co_tag = co_tag<final_suspend_never_tag,initial_suspend_never_tag>,
-	typename Derived = emptyDerived
+	    typename RTY,
+		typename Derived = emptyDerived,
+	    typename Co_tag = co_tag<>
 	>
 	requires RightTag<Co_tag> && default_initializable<emptyDerived>
 	class task

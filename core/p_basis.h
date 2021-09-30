@@ -52,6 +52,8 @@ namespace pisces
 	template<typename...tags>
 	struct co_tag :tags...{};
 
+	template<>
+	struct co_tag<> :initial_suspend_always_tag, final_suspend_always_tag, yield_value_always_tag {};
 
 	template<typename tag>
 	constexpr bool mutex_tag_v = (derived_from<tag, initial_suspend_always_tag> 

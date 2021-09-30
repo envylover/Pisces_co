@@ -23,10 +23,10 @@ public:
 	}
 } ;
 class Generate
-	:public task<int, co_tag<final_suspend_always_tag>,Generate>
+	:public task<int, Generate>
 {
 public:
-	using base = task<int, co_tag<final_suspend_always_tag>, Generate>;
+	using base = task<int, Generate>;
 	Generate(std::coroutine_handle<base::promise_type> h) :base(h) {}
 	Generate(){}
 	class Iter 
@@ -71,6 +71,7 @@ Generate range(int first, int last)
 int main() {
 	
 	for (auto i : range(1, 10))
-		cout << i << endl;
+		cout << i << " ";
+	cout << endl;
 	return 0;
 }
