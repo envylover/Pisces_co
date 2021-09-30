@@ -29,6 +29,7 @@ public:
 	using base = task<int, Generate>;
 	Generate(std::coroutine_handle<base::promise_type> h) :base(h) {}
 	Generate(){}
+	~Generate() {}
 	class Iter 
 	{
 		Generate* pG;

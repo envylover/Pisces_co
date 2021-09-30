@@ -4,6 +4,9 @@
 #include <concepts>
 namespace pisces
 {
+
+	struct emptyDerived {};
+
 	using namespace std;
 	template<typename T>
 	concept exist_await_ready = requires (T && t) {

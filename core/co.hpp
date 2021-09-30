@@ -11,7 +11,7 @@ namespace pisces
 {
 	using namespace std;
 
-	struct emptyDerived {};
+	
 
 
 	template<
@@ -33,7 +33,10 @@ namespace pisces
 		task() {}
 	    //----------------------------------------------------
 		
-
+		~task() {
+			if (_handler)
+				_handler.destroy();
+		}
 
 	public:
 		struct promise_type
@@ -105,7 +108,9 @@ namespace pisces
 		void destory()
 		{
 			if (_handler)
-				return _handler.destroy();
+				 _handler.destroy();
+			_handler = nullptr;
+			return;
 		}
 		std::coroutine_handle<promise_type> _handler;
 
