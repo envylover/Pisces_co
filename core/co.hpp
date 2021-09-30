@@ -11,9 +11,6 @@ namespace pisces
 {
 	using namespace std;
 
-	
-
-
 	template<
 	    typename RTY,
 		typename Derived = emptyDerived,
@@ -34,6 +31,7 @@ namespace pisces
 	    //----------------------------------------------------
 		
 		~task() {
+			pDeri = nullptr;
 			if (_handler)
 				_handler.destroy();
 		}
@@ -50,8 +48,11 @@ namespace pisces
 			}
 			auto initial_suspend() { 
 
-				if constexpr(default_initialize<Derived>)
-					pDeri->init();
+				if constexpr (default_initialize<Derived>)
+				{
+					if (pDeri)
+						pDeri->init();
+				}
 
 				if constexpr (derived_from<Co_tag, initial_suspend_never_tag>)
 					return suspend_never{};
@@ -61,8 +62,10 @@ namespace pisces
 			auto final_suspend() noexcept {
 
 				if constexpr (default_final<Derived>)
-					pDeri->co_final();
-
+				{
+					if (pDeri)
+						pDeri->co_final();
+				}
 				if constexpr (derived_from<Co_tag, final_suspend_always_tag>)
 					return suspend_always{};
 				else
@@ -78,7 +81,10 @@ namespace pisces
 			//void return_void() {}
 			void unhandled_exception() {
 				if constexpr (default_except<Derived>)
-					pDeri->co_except();
+				{
+					if (pDeri)
+						pDeri->co_except();
+				}
 				else
 					throw;
 			}

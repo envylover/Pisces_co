@@ -22,11 +22,15 @@ public:
 		return 0;
 	}
 } ;
+struct A
+{
+	int val = 0;
+};
 class Generate
-	:public task<int, Generate>
+	:public task<A, Generate>
 {
 public:
-	using base = task<int, Generate>;
+	using base = task<A, Generate>;
 	Generate(std::coroutine_handle<base::promise_type> h) :base(h) {}
 	Generate(){}
 	~Generate() {}
@@ -37,7 +41,7 @@ public:
 		void operator++() {
 			pG->resume();
 		}
-		const int& operator*() const {
+		const A& operator*() const {
 			auto i = pG->get();
 			return i;
 		}
@@ -64,7 +68,7 @@ public:
 Generate range(int first, int last)
 {
 	while (first < last)
-		co_yield first++;
+		co_yield A(first++);
 }
 
 
@@ -76,19 +80,22 @@ task<int> getValue(int beg,int end)
 
 
 #include <algorithm>
+#include <thread>
 int main() {
-	
 	for (auto i : range(1, 10))
-		cout << i << " ";
+		cout << i.val << " ";
 	cout << endl;
-
-	auto a = getValue(1,15);
+	auto a = getValue(1, 15);
 	a.resume();
-	while (a && !a.done())
-	{
-		cout << a.get() << " ";
-		a.resume();
-	}
-	a.destory();
+	std::thread t([&](){
+
+		while (a && !a.done())
+		{
+			cout << a.get() << " ";
+			a.resume();
+		}
+		a.destory();
+	});
+	t.join();
 	return 0;
 }
