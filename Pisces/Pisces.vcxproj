@@ -142,8 +142,6 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="..\core\co.hpp" />
-    <ClInclude Include="..\core\fectory.hpp" />
-    <ClInclude Include="..\core\p_basis.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\core\源.cpp" />
