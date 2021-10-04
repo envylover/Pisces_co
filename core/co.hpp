@@ -4,7 +4,7 @@
 
 #include <tuple>
 #include <concepts>
-
+#include <memory>
 
 namespace pisces
 {
@@ -92,33 +92,64 @@ namespace pisces
 		Derived* pDeri = nullptr;
 	public:
 		struct promise_type;
-		explicit task(std::coroutine_handle<promise_type>& h):_handler(h) {
+		using co_handle = std::coroutine_handle<promise_type>;
+		explicit task(std::coroutine_handle<promise_type>& h):_handler(h),
+			_pInfo(new info(1,false), [](info* p) {
+			delete p;
+				}	
+			)
+		{
+			if constexpr (same_as<Derived, emptyDerived>);
+			else
+				pDeri = static_cast<Derived*>(this);
+
+		}
+
+		explicit task(std::coroutine_handle<promise_type>&& h) :_handler(h),
+			_pInfo(new info(1,false), [](info* p) {
+			delete p;
+				}
+			)
+		{
 			if constexpr (same_as<Derived, emptyDerived>);
 			else
 				pDeri = static_cast<Derived*>(this);
 		}
 
-		explicit task(std::coroutine_handle<promise_type>&& h) :_handler(h) {
+		task(task& other):_handler(other._handler),_pInfo(other._pInfo)
+		{
+			if constexpr (same_as<Derived, emptyDerived>);
+			else
+				pDeri = static_cast<Derived*>(this);
+			_pInfo->ref_cnt++;
+		}
+		task(task&& other):_handler(std::move(other._handler)), _pInfo(std::move(other._pInfo))
+		{
+			other._handler = nullptr;
 			if constexpr (same_as<Derived, emptyDerived>);
 			else
 				pDeri = static_cast<Derived*>(this);
 		}
+		task& operator = (task& other)
+		{
+			dec_cnt();
+			_handler = other._handler();
+			_pInfo = other._pInfo;
+		}
+		task& operator = (task&& other)
+		{
+			dec_cnt();
+			_handler = std::move(other._handler());
+			_pInfo = std::move(other._pInfo);
+		};
+		task() {
 
-		task(task& other)
-		{
-			task(other._handler);
 		}
-		task(task&& other)
-		{
-			task(std::move(other._handler));
-		}
-		task() {}
 	    //----------------------------------------------------
 		
 		~task() {
 			pDeri = nullptr;
-			if (_handler)
-				_handler.destroy();
+			dec_cnt();
 			_handler = nullptr;
 		}
 
@@ -186,12 +217,18 @@ namespace pisces
 			{
 				_res = res;
 			}
+			promise_type() = default;
+			promise_type(promise_type&) = default;
+			promise_type(promise_type&&) = default;
+			promise_type& operator = (promise_type&) = default;
+			promise_type& operator = (promise_type&&) = default;
 			decay_t<RTY>                            _res;
 		};
 		void* address()
 		{
-			if (_handler)
-				return _handler.address();
+			if (_pInfo)
+				if (!_pInfo->expire)
+					return _handler.address();
 			return nullptr;
 		}
 
@@ -199,64 +236,267 @@ namespace pisces
 		{
 			if (addr)
 			{
-				if (_handler)
-					_handler.destroy();
+				dec_cnt();
 				_handler = _handler.from_address(addr);
+				
+				_pInfo.reset(new info(1, false));
 			}
-
 		}
 
 		RTY get()
 		{
-			return _handler.promise()._res;
+			if (!_pInfo->expire)
+				return _handler.promise()._res;
+			throw;
 		}
-		void resume()
+		void resume()noexcept
 		{
-			if (_handler)
+			if (!_pInfo->expire)
 				_handler.resume();
 		}
-		operator bool() {
-			return _handler.operator bool();
+		operator bool()noexcept {
+			if (_pInfo)
+				if (!_pInfo->expire)
+					return _handler.operator bool();
+			return false;
 		}
-		bool done() {
-			if (_handler)
-				return _handler.done();
+		bool done()noexcept {
+			if (_pInfo)
+				if (!_pInfo->expire)
+					return _handler.done();
 			return true;
 		}
 		void destory()
 		{
-			if (_handler)
-				 _handler.destroy();
-			_handler = nullptr;
+			if (_pInfo)
+			{
+				if (!_pInfo->expire)
+					_handler.destroy();
+				_pInfo->expire = true;
+				_pInfo->ref_cnt--;
+				_handler = nullptr;
+			}
 			return;
 		}
 
 
 	private:
-		std::coroutine_handle<promise_type> _handler;
-
+		void dec_cnt()
+		{
+			if (_pInfo)
+			{
+				_pInfo->ref_cnt--;
+				if (_pInfo->ref_cnt <= 0 || _pInfo->expire)
+				{
+					destory();
+				}
+			}
+		}
+		struct info
+		{
+			int ref_cnt = 0;
+			bool expire = false;
+		};
+		std::coroutine_handle<promise_type> _handler = nullptr;
+		std::shared_ptr<info>               _pInfo = nullptr;
 
 	};
-	template<>
-	class task<void>
+
+
+
+	template<
+		typename Derived,
+		typename Co_tag
+	>
+	requires RightTag<Co_tag>&& default_initializable<emptyDerived>
+	class task<void, Derived, Co_tag>
 	{
-		
+		Derived* pDeri = nullptr;
 	public:
-		task() {}
+		struct promise_type;
+		using co_handle = std::coroutine_handle<promise_type>;
+		explicit task(std::coroutine_handle<promise_type>& h) :_handler(h),
+			_pInfo(new info(1, false), [](info* p) {
+			delete p;
+				}
+			)
+		{
+			if constexpr (same_as<Derived, emptyDerived>);
+			else
+				pDeri = static_cast<Derived*>(this);
+
+		}
+
+		explicit task(std::coroutine_handle<promise_type>&& h) :_handler(h),
+			_pInfo(new info(1, false), [](info* p) {
+			delete p;
+				}
+			)
+		{
+			if constexpr (same_as<Derived, emptyDerived>);
+			else
+				pDeri = static_cast<Derived*>(this);
+		}
+
+		task(task& other) :_handler(other._handler), _pInfo(other._pInfo)
+		{
+			if constexpr (same_as<Derived, emptyDerived>);
+			else
+				pDeri = static_cast<Derived*>(this);
+			_pInfo->ref_cnt++;
+		}
+		task(task&& other) :_handler(std::move(other._handler)), _pInfo(std::move(other._pInfo))
+		{
+			other._handler = nullptr;
+			if constexpr (same_as<Derived, emptyDerived>);
+			else
+				pDeri = static_cast<Derived*>(this);
+		}
+		task& operator = (task& other)
+		{
+			dec_cnt();
+			_handler = other._handler();
+			_pInfo = other._pInfo;
+		}
+		task& operator = (task&& other)
+		{
+			dec_cnt();
+			_handler = std::move(other._handler());
+			_pInfo = std::move(other._pInfo);
+		};
+		task() {
+
+		}
 		//----------------------------------------------------
+
+		~task() {
+			pDeri = nullptr;
+			dec_cnt();
+			_handler = nullptr;
+		}
+
+	public:
 		struct promise_type
 		{
-			auto get_return_object() { return task{}; }
-			std::suspend_never initial_suspend() { return {}; }
-			std::suspend_never final_suspend() noexcept { return {}; }
-			std::suspend_always yield_value() {
-				return {};
+			using co_handle = std::coroutine_handle<promise_type>;
+			auto get_return_object() {
+				if constexpr (same_as<Derived, emptyDerived>)
+					return task{ co_handle::from_promise(*this) };
+				else
+					return Derived{ co_handle::from_promise(*this) };
 			}
+			auto initial_suspend() {
+
+				if constexpr (default_initialize<Derived>)
+				{
+					if (pDeri)
+						pDeri->init();
+				}
+
+				if constexpr (derived_from<Co_tag, initial_suspend_never_tag>)
+					return suspend_never{};
+				else
+					return suspend_always{};
+			}
+			auto final_suspend() noexcept {
+
+				if constexpr (default_final<Derived>)
+				{
+					if (pDeri)
+						pDeri->co_final();
+				}
+				if constexpr (derived_from<Co_tag, final_suspend_always_tag>)
+					return suspend_always{};
+				else
+					return suspend_never{};
+			}
+
+			
 			void return_void() {}
 			void unhandled_exception() {
-				throw;
+				if constexpr (default_except<Derived>)
+				{
+					if (pDeri)
+						pDeri->co_except();
+				}
+				else
+					throw;
 			}
+			promise_type() = default;
+			promise_type(promise_type&) = default;
+			promise_type(promise_type&&) = default;
+			promise_type& operator = (promise_type&) = default;
+			promise_type& operator = (promise_type&&) = default;
 		};
+		void* address()
+		{
+			if (_pInfo)
+				if (!_pInfo->expire)
+					return _handler.address();
+			return nullptr;
+		}
+
+		void from_address(void* addr)
+		{
+			if (addr)
+			{
+				dec_cnt();
+				_handler = _handler.from_address(addr);
+
+				_pInfo.reset(new info(1, false));
+			}
+		}
+		void resume()noexcept
+		{
+			if (!_pInfo->expire)
+				_handler.resume();
+		}
+		operator bool()noexcept {
+			if (_pInfo)
+				if (!_pInfo->expire)
+					return _handler.operator bool();
+			return false;
+		}
+		bool done()noexcept {
+			if (_pInfo)
+				if (!_pInfo->expire)
+					return _handler.done();
+			return true;
+		}
+		void destory()
+		{
+			if (_pInfo)
+			{
+				if (!_pInfo->expire)
+					_handler.destroy();
+				_pInfo->expire = true;
+				_pInfo->ref_cnt--;
+				_handler = nullptr;
+			}
+			return;
+		}
+
+
+	private:
+		void dec_cnt()
+		{
+			if (_pInfo)
+			{
+				_pInfo->ref_cnt--;
+				if (_pInfo->ref_cnt <= 0 || _pInfo->expire)
+				{
+					destory();
+				}
+			}
+		}
+		struct info
+		{
+			int ref_cnt = 0;
+			bool expire = false;
+		};
+		std::coroutine_handle<promise_type> _handler = nullptr;
+		std::shared_ptr<info>               _pInfo = nullptr;
+
 	};
 	
 

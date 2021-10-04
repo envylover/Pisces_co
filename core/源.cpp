@@ -86,7 +86,7 @@ int main() {
 		cout << i.val << " ";
 	cout << endl;
 	auto a = getValue(1, 15);
-	a.resume();
+	/*a.resume();
 	std::thread t([&](){
 
 		while (a && !a.done())
@@ -96,6 +96,12 @@ int main() {
 		}
 		a.destory();
 	});
-	t.join();
+	t.join();*/
+	auto b = a;
+	auto d = std::move(a);
+	a.destory();
+	bool c = b;
+	b.destory();
+	bool cd = d;
 	return 0;
 }
