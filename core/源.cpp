@@ -34,6 +34,9 @@ public:
 	Generate(std::coroutine_handle<base::promise_type> h) :base(h) {}
 	Generate(){}
 	~Generate() {}
+	void co_init() {
+		cout << "init()" << endl;
+	}
 	class Iter 
 	{
 		Generate* pG;
@@ -41,7 +44,7 @@ public:
 		void operator++() {
 			pG->resume();
 		}
-		const A& operator*() const {
+		const A operator*() const {
 			auto i = pG->get();
 			return i;
 		}
@@ -78,30 +81,25 @@ task<int> getValue(int beg,int end)
 		co_yield beg++;
 }
 
-
 #include <algorithm>
 #include <thread>
 int main() {
 	for (auto i : range(1, 10))
 		cout << i.val << " ";
 	cout << endl;
-	auto a = getValue(1, 15);
-	/*a.resume();
-	std::thread t([&](){
 
-		while (a && !a.done())
-		{
-			cout << a.get() << " ";
-			a.resume();
-		}
-		a.destory();
-	});
-	t.join();*/
-	auto b = a;
-	auto d = std::move(a);
-	a.destory();
-	bool c = b;
-	b.destory();
-	bool cd = d;
+	auto fun = [](int beg,int end)->task<int,emptyDerived,co_tag<initial_suspend_never_tag,final_suspend_never_tag>> {
+		while (beg < end)
+			co_yield beg++;
+	};
+	
+	auto co = fun(0, 3);
+	while (!co.done())
+	{
+		cout << co.get() << " ";
+		co.resume();
+	}
+	co.destory();
+	//constexpr int a = th-o;
 	return 0;
 }

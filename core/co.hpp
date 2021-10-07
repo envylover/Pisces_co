@@ -5,45 +5,55 @@
 #include <tuple>
 #include <concepts>
 #include <memory>
-
+#include <atomic>
 namespace pisces
 {
+	using namespace std;
+
 
 	struct emptyDerived {};
-
-	using namespace std;
+	
+	/* ----------------------------------some concept----------------------------------- */
 	template<typename T>
 	concept exist_await_ready = requires (T && t) {
 		t.ready();
 		requires same_as<decltype(t.ready()), bool>;
 	};
-
+	//------------------------------------------------------------
 	template<typename T, typename promise_type = void>
-	concept exist_await_suspend = requires (T && t, std::coroutine_handle<promise_type> h) {
+	concept exist_await_suspend = requires (T && t,
+		std::coroutine_handle<promise_type> h) 
+	{
 		t.suspend(h);
 		requires same_as<decltype(t.suspend(h)), void>;
 	};
-
+	//------------------------------------------------------------
 	template<typename T>
 	concept exist_await_resume = requires (T && t) {
 		t.resume();
 		//requires same_as<decltype(t.resume()), void>;
 	};
-
+	//------------------------------------------------------------
 	template<class Ty>
 	concept default_initialize = requires (Ty && t) {
 		t.co_init();
 	};
+	//------------------------------------------------------------
 	template<class Ty>
 	concept default_final = requires (Ty && t) {
 		t.co_final();
 	};
-
+	//------------------------------------------------------------
 	template<class Ty>
 	concept default_except = requires (Ty && t) {
 		t.co_except();
 	};
+	//------------------------------------------------------------
+	
+	/* --------------------------------------------------------------------------------- */
 
+
+	/* ------------------------------------some tag------------------------------------- */
 	struct co_tag_t {};
 
 	//-------------------------------------------------------------
@@ -93,6 +103,7 @@ namespace pisces
 	public:
 		struct promise_type;
 		using co_handle = std::coroutine_handle<promise_type>;
+
 		explicit task(std::coroutine_handle<promise_type>& h):_handler(h),
 			_pInfo(new info(1,false), [](info* p) {
 			delete p;
@@ -103,6 +114,7 @@ namespace pisces
 			else
 				pDeri = static_cast<Derived*>(this);
 
+			_handler.promise().pOuter = this;
 		}
 
 		explicit task(std::coroutine_handle<promise_type>&& h) :_handler(h),
@@ -114,6 +126,7 @@ namespace pisces
 			if constexpr (same_as<Derived, emptyDerived>);
 			else
 				pDeri = static_cast<Derived*>(this);
+			_handler.promise().pOuter = this;
 		}
 
 		task(task& other):_handler(other._handler),_pInfo(other._pInfo)
@@ -122,28 +135,50 @@ namespace pisces
 			else
 				pDeri = static_cast<Derived*>(this);
 			_pInfo->ref_cnt++;
+			_handler.promise().pOuter = this;
 		}
-		task(task&& other):_handler(std::move(other._handler)), _pInfo(std::move(other._pInfo))
+
+		task(task&& other):_handler(std::move(other._handler))
+			, _pInfo(std::move(other._pInfo))
 		{
 			other._handler = nullptr;
 			if constexpr (same_as<Derived, emptyDerived>);
 			else
 				pDeri = static_cast<Derived*>(this);
+
+			_handler.promise().pOuter = this;
 		}
+
 		task& operator = (task& other)
 		{
 			dec_cnt();
 			_handler = other._handler();
 			_pInfo = other._pInfo;
+
+			_handler.promise().pOuter = this;
 		}
+
 		task& operator = (task&& other)
 		{
 			dec_cnt();
 			_handler = std::move(other._handler());
 			_pInfo = std::move(other._pInfo);
-		};
-		task() {
 
+			_handler.promise().pOuter = this;
+		};
+
+		void init() {
+			pDeri->co_init();
+		}
+		void Final()
+		{
+			pDeri->co_final();
+		}
+		void except()
+		{
+			pDeri->co_except();
+		}
+		task(){
 		}
 	    //----------------------------------------------------
 		
@@ -152,23 +187,24 @@ namespace pisces
 			dec_cnt();
 			_handler = nullptr;
 		}
-
 	public:
 		struct promise_type
 		{
 			using co_handle = std::coroutine_handle<promise_type>;
-			auto get_return_object() {
+			task* pOuter = nullptr;
+			auto get_return_object()
+			{
 				if constexpr (same_as<Derived, emptyDerived>)
 					return task{ co_handle::from_promise(*this) };
 				else
 					return Derived{ co_handle::from_promise(*this) };
 			}
 			auto initial_suspend() { 
-
+				 
 				if constexpr (default_initialize<Derived>)
 				{
-					if (pDeri)
-						pDeri->init();
+					if (pOuter)
+						pOuter->init();
 				}
 
 				if constexpr (derived_from<Co_tag, initial_suspend_never_tag>)
@@ -176,12 +212,17 @@ namespace pisces
 				else
 					return suspend_always{};
 			}
+
 			auto final_suspend() noexcept {
 
 				if constexpr (default_final<Derived>)
 				{
-					if (pDeri)
-						pDeri->co_final();
+					if (pOuter)
+						pOuter->Final();
+				}
+				if (pOuter)
+				{
+					pOuter->Invalidated();
 				}
 				if constexpr (derived_from<Co_tag, final_suspend_always_tag>)
 					return suspend_always{};
@@ -196,6 +237,7 @@ namespace pisces
 				else
 					return suspend_always();
 			}
+
 			auto yield_value(RTY& val) {
 				_res = val;
 				if constexpr (derived_from<Co_tag, yield_value_never_tag>)
@@ -203,17 +245,33 @@ namespace pisces
 				else
 					return suspend_always();
 			}
-			//void return_void() {}
+
+			auto yield_value(RTY const& val) {
+				_res = val;
+				if constexpr (derived_from<Co_tag, yield_value_never_tag>)
+					return suspend_never{};
+				else
+					return suspend_always();
+			}
+
 			void unhandled_exception() {
 				if constexpr (default_except<Derived>)
 				{
-					if (pDeri)
-						pDeri->co_except();
+					if (pOuter)
+						pOuter->except();
 				}
 				else
 					throw;
 			}
 			void return_value(RTY&& res)
+			{
+				_res = res;
+			}
+			void return_value(RTY& res)
+			{
+				_res = res;
+			}
+			void return_value(RTY const & res)
 			{
 				_res = res;
 			}
@@ -224,6 +282,13 @@ namespace pisces
 			promise_type& operator = (promise_type&&) = default;
 			decay_t<RTY>                            _res;
 		};
+		
+		void Invalidated()
+		{
+			if (_pInfo)
+				_pInfo->expire = true;
+		}
+
 		void* address()
 		{
 			if (_pInfo)
@@ -294,8 +359,8 @@ namespace pisces
 		}
 		struct info
 		{
-			int ref_cnt = 0;
-			bool expire = false;
+			atomic_int ref_cnt = 0;
+			atomic_bool expire = false;
 		};
 		std::coroutine_handle<promise_type> _handler = nullptr;
 		std::shared_ptr<info>               _pInfo = nullptr;
@@ -376,6 +441,7 @@ namespace pisces
 		}
 
 	public:
+		
 		struct promise_type
 		{
 			using co_handle = std::coroutine_handle<promise_type>;
