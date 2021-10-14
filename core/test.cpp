@@ -1,6 +1,8 @@
+
 #include "co.hpp"
 #include <iostream>
 #include "fectory.hpp"
+#include <thread>
 
 using namespace pisces;
 class Add
@@ -78,28 +80,61 @@ Generate range(int first, int last)
 task<int> getValue(int beg,int end)
 {
 	while (beg < end)
-		co_yield beg++;
+		co_yield co_await Add(beg++);
+	
 }
+task<void> add100(int a)
+{
+	cout << co_await Add(a);
+}
+
+class _A
+{
+
+};
+class B :public _A
+{};
+class C :public B
+{
+	
+};
+
+
 
 #include <algorithm>
 #include <thread>
+#include <mutex>
+#include <chrono>
 int main() {
-	for (auto i : range(1, 10))
-		cout << i.val << " ";
-	cout << endl;
-
-	auto fun = [](int beg,int end)->task<int,emptyDerived,co_tag<initial_suspend_never_tag,final_suspend_never_tag>> {
+	//for (auto i : range(1, 10))
+	//	cout << i.val << " ";
+	//cout << endl;
+	auto fun = [](int beg,int end)->task<int,emptyDerived,initial_suspend_never_tag> {
 		while (beg < end)
 			co_yield beg++;
 	};
-	
-	auto co = fun(0, 3);
-	while (!co.done())
+	auto co = fun(0, 20);
+	std::mutex mx;
+	for (int i = 0; i < 20; ++i)
 	{
-		cout << co.get() << " ";
-		co.resume();
+		thread t([&]() {
+			while (true)
+			{
+				std::lock_guard lck(mx);
+				if (!co.done())
+				{
+					cout << "threadID: "<< this_thread::get_id() << " get: " << co.get() << endl;
+					co.resume();
+				}
+				else{
+					if(co)
+						co.destory();
+					break;
+				}
+			}
+			}); 
+		t.detach();
 	}
-	co.destory();
-	//constexpr int a = th-o;
+	std::this_thread::sleep_for(1s);
 	return 0;
 }
